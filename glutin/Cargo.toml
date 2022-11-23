@@ -25,11 +25,7 @@ wayland-csd-adwaita-notitle = ["winit/wayland-csd-adwaita-notitle"]
 
 [dependencies]
 once_cell = "1.13"
-
-[dependencies.winit]
-git = "https://github.com/iced-rs/winit.git"
-rev = "940457522e9fb9f5dac228b0ecfafe0138b4048c"
-default-features = false
+winit = { version = "0.27.1", default-features = false }
 
 [target.'cfg(target_os = "android")'.dependencies]
 glutin_egl_sys = { version = "0.1.6", path = "../glutin_egl_sys" }
@@ -45,6 +41,7 @@ glutin_gles2_sys = { version = "0.1.5", path = "../glutin_gles2_sys" }
 cgl = "0.3"
 cocoa = "0.24"
 core-foundation = "0.9"
+log = "0.4"
 
 [target.'cfg(target_os = "windows")'.dependencies.winapi]
 version = "0.3"

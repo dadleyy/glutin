@@ -552,13 +552,42 @@ pub struct PixelFormatRequirements {
 impl Default for PixelFormatRequirements {
     #[inline]
     fn default() -> PixelFormatRequirements {
+        let color_bits = std::env::var("GLUTIN_COLOR_BITS")
+            .ok()
+            .and_then(|value| {
+                log::debug!("found pixel format color size in env - {value}");
+                value.parse::<u8>().ok()
+            })
+            .unwrap_or(24);
+        let alpha_bits = std::env::var("GLUTIN_ALPHA_BITS")
+            .ok()
+            .and_then(|value| {
+                log::debug!("found pixel format alpha size in env - {value}");
+                value.parse::<u8>().ok()
+            })
+            .unwrap_or(8);
+        let depth_bits = std::env::var("GLUTIN_DEPTH_BITS")
+            .ok()
+            .and_then(|value| {
+                log::debug!("found pixel format depth size in env - {value}");
+                value.parse::<u8>().ok()
+            })
+            .unwrap_or(24);
+        let stencil_bits = std::env::var("GLUTIN_STENCIL_BITS")
+            .ok()
+            .and_then(|value| {
+                log::debug!("found pixel format stencil size in env - {value}");
+                value.parse::<u8>().ok()
+            })
+            .unwrap_or(8);
+
         PixelFormatRequirements {
             hardware_accelerated: Some(true),
-            color_bits: Some(24),
+            color_bits: Some(color_bits),
             float_color_buffer: false,
-            alpha_bits: Some(8),
-            depth_bits: Some(24),
-            stencil_bits: Some(8),
+            alpha_bits: Some(alpha_bits),
+            depth_bits: Some(depth_bits),
+            stencil_bits: Some(stencil_bits),
             double_buffer: None,
             multisampling: None,
             stereoscopy: false,
