@@ -969,11 +969,11 @@ where
             egl.GetConfigAttrib(display, *config, ffi::egl::RED_SIZE as raw::c_int, value_ptr);
             log::debug!("red: {value}");
 
-            egl.GetConfigAttrib(display, *config, ffi::egl::BLUE_SIZE as raw::c_int, value_ptr);
-            log::debug!("red: {value}");
-
             egl.GetConfigAttrib(display, *config, ffi::egl::GREEN_SIZE as raw::c_int, value_ptr);
             log::debug!("green: {value}");
+
+            egl.GetConfigAttrib(display, *config, ffi::egl::BLUE_SIZE as raw::c_int, value_ptr);
+            log::debug!("blue: {value}");
 
             egl.GetConfigAttrib(display, *config, ffi::egl::ALPHA_SIZE as raw::c_int, value_ptr);
             log::debug!("alpha: {value}");
