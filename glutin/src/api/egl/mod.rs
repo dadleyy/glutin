@@ -1032,6 +1032,7 @@ where
 
     // We're interested in those configs which allow our desired VSync.
     let desired_swap_interval = if opengl.vsync { 1 } else { 0 };
+    log::debug!("attempting to find swap interval - {desired_swap_interval}");
 
     let config_ids = config_ids
         .into_iter()
@@ -1045,6 +1046,8 @@ where
             );
 
             if desired_swap_interval < min_swap_interval {
+                log::warn!("mismatch min swap interval for config {config:?}: {min_swap_interval}");
+
                 return false;
             }
 
@@ -1057,6 +1060,8 @@ where
             );
 
             if desired_swap_interval > max_swap_interval {
+                log::warn!("mismatch max swap interval for config {config:?}: {max_swap_interval}");
+
                 return false;
             }
 
