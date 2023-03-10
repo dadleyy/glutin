@@ -965,6 +965,7 @@ where
         match (api, version) {
             (Api::OpenGlEs, Some((3, _))) => {
                 if egl_version < &(1, 3) {
+                    log::warn!("opengles 3 egl_version mismatch");
                     return Err(CreationError::NoAvailablePixelFormat);
                 }
                 out.push(ffi::egl::RENDERABLE_TYPE as raw::c_int);
@@ -974,6 +975,7 @@ where
             }
             (Api::OpenGlEs, Some((2, _))) => {
                 if egl_version < &(1, 3) {
+                    log::warn!("opengles 2 egl_version mismatch");
                     return Err(CreationError::NoAvailablePixelFormat);
                 }
                 out.push(ffi::egl::RENDERABLE_TYPE as raw::c_int);
@@ -991,6 +993,7 @@ where
             }
             (Api::OpenGl, _) => {
                 if egl_version < &(1, 3) {
+                    log::warn!("opengl egl_version mismatch");
                     return Err(CreationError::NoAvailablePixelFormat);
                 }
                 out.push(ffi::egl::RENDERABLE_TYPE as raw::c_int);
@@ -1035,6 +1038,8 @@ where
         }
 
         if let Some(true) = pf_reqs.double_buffer {
+            log::warn!("requires double buffer");
+
             return Err(CreationError::NoAvailablePixelFormat);
         }
 
@@ -1044,6 +1049,8 @@ where
         }
 
         if pf_reqs.stereoscopy {
+            log::warn!("requires stereoscopy");
+
             return Err(CreationError::NoAvailablePixelFormat);
         }
 
@@ -1064,6 +1071,17 @@ where
         out
     };
 
+    unsafe {
+        let mut available_configs = Vec::with_capacity(100);
+        let mut amount: i32 = 0;
+        let amount_ptr: *mut i32 = &mut amount;
+        egl.GetConfigs(display, available_configs.as_mut_ptr(), 100, amount_ptr);
+
+        for config in &available_configs {
+            log::info!("{config:?}");
+        }
+    }
+
     // calling `eglChooseConfig`
     let mut num_configs = std::mem::zeroed();
     if egl.ChooseConfig(display, descriptor.as_ptr(), std::ptr::null_mut(), 0, &mut num_configs)
@@ -1073,6 +1091,8 @@ where
     }
 
     if num_configs == 0 {
+        log::warn!("no matching config found");
+
         return Err(CreationError::NoAvailablePixelFormat);
     }
 
@@ -1124,11 +1144,16 @@ where
         .collect::<Vec<_>>();
 
     if config_ids.is_empty() {
+        log::warn!("no config ids available");
+
         return Err(CreationError::NoAvailablePixelFormat);
     }
 
-    let config_id =
-        config_selector(config_ids, display).map_err(|_| CreationError::NoAvailablePixelFormat)?;
+    let config_id = config_selector(config_ids, display).map_err(|_| {
+        log::warn!("unable to get config selector from list");
+
+        CreationError::NoAvailablePixelFormat
+    })?;
 
     // analyzing each config
     macro_rules! attrib {
