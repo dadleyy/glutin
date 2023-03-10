@@ -945,6 +945,7 @@ where
     ) -> Result<ffi::egl::types::EGLConfig, ()>,
 {
     let egl = EGL.as_ref().unwrap();
+    log::debug!("attempting to find matching pixel format for {pf_reqs:?}");
 
     unsafe {
         let mut available_configs = Vec::with_capacity(100);
