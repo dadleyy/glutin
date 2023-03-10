@@ -953,6 +953,10 @@ where
         let amount_ptr: *mut i32 = &mut amount;
         egl.GetConfigs(display, available_configs.as_mut_ptr(), 100, amount_ptr);
 
+        if available_configs.is_empty() {
+            log::warn!("unable to find any configs via GetConfigs");
+        }
+
         for config in &available_configs {
             log::info!("{config:?}");
         }
