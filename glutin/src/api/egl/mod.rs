@@ -1010,6 +1010,8 @@ where
         return Err(CreationError::OsError("eglChooseConfig failed".to_string()));
     }
 
+    log::debug!("found {num_configs} available configs in dont-care");
+
     if num_configs == 0 {
         log::warn!("no matching config found");
 
@@ -1028,6 +1030,7 @@ where
     {
         return Err(CreationError::OsError("eglChooseConfig failed".to_string()));
     }
+    log::debug!("populated {} config ids", config_ids.len());
 
     // We're interested in those configs which allow our desired VSync.
     let desired_swap_interval = if opengl.vsync { 1 } else { 0 };
