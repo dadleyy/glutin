@@ -395,22 +395,21 @@ impl Context {
         let (version, api) = unsafe { bind_and_get_api(opengl, egl_version)? };
 
         let (config_id, pixel_format) = unsafe {
-            match yeet_fbconfig(display, surface_type, opengl, &mut config_selector) {
+            match choose_fbconfig(
+                display,
+                &egl_version,
+                api,
+                version,
+                pf_reqs,
+                surface_type,
+                opengl,
+                &mut config_selector,
+            ) {
                 Err(error) => {
                     log::warn!(
                         "unable to pick fbconfig from provided options, defaulting to dont care (error: {error:?})"
                     );
-
-                    choose_fbconfig(
-                        display,
-                        &egl_version,
-                        api,
-                        version,
-                        pf_reqs,
-                        surface_type,
-                        opengl,
-                        config_selector,
-                    )?
+                    yeet_fbconfig(display, surface_type, opengl, &mut config_selector)?
                 }
                 Ok((id, fmt)) => (id, fmt),
             }
