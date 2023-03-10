@@ -378,6 +378,7 @@ impl Context {
         }
 
         let egl_version = get_egl_version(display)?;
+        log::debug!("found egl version - {egl_version:?}");
 
         // the list of extensions supported by the client once initialized is
         // different from the list of extensions obtained earlier
@@ -394,26 +395,18 @@ impl Context {
         let (version, api) = unsafe { bind_and_get_api(opengl, egl_version)? };
 
         let (config_id, pixel_format) = unsafe {
-            match choose_fbconfig(
-                display,
-                &egl_version,
-                api,
-                version,
-                pf_reqs,
-                surface_type,
-                opengl,
-                &mut config_selector,
-            ) {
+            match yeet_fbconfig(display, surface_type, opengl, &mut config_selector) {
                 Err(error) => {
                     log::warn!(
                         "unable to pick fbconfig from provided options, defaulting to dont care (error: {error:?})"
                     );
 
-                    yeet_fbconfig(
+                    choose_fbconfig(
                         display,
                         &egl_version,
                         api,
                         version,
+                        pf_reqs,
                         surface_type,
                         opengl,
                         config_selector,
@@ -947,9 +940,6 @@ impl<'a> ContextPrototype<'a> {
 
 unsafe fn yeet_fbconfig<F>(
     display: ffi::egl::types::EGLDisplay,
-    egl_version: &(ffi::egl::types::EGLint, ffi::egl::types::EGLint),
-    api: Api,
-    version: Option<(u8, u8)>,
     surface_type: SurfaceType,
     opengl: &GlAttributes<&Context>,
     mut config_selector: F,
@@ -977,53 +967,10 @@ where
         };
         out.push(surface_type as raw::c_int);
 
-        match (api, version) {
-            (Api::OpenGlEs, Some((3, _))) => {
-                if egl_version < &(1, 3) {
-                    log::warn!("opengles 3 egl_version mismatch");
-                    return Err(CreationError::NoAvailablePixelFormat);
-                }
-                log::debug!("using OpenGlEs 3.x");
-                out.push(ffi::egl::RENDERABLE_TYPE as raw::c_int);
-                out.push(ffi::egl::OPENGL_ES3_BIT as raw::c_int);
-                out.push(ffi::egl::CONFORMANT as raw::c_int);
-                out.push(ffi::egl::OPENGL_ES3_BIT as raw::c_int);
-            }
-            (Api::OpenGlEs, Some((2, _))) => {
-                if egl_version < &(1, 3) {
-                    log::warn!("opengles 2 egl_version mismatch");
-                    return Err(CreationError::NoAvailablePixelFormat);
-                }
-                log::debug!("using OpenGlEs 2.x");
-                out.push(ffi::egl::RENDERABLE_TYPE as raw::c_int);
-                out.push(ffi::egl::OPENGL_ES2_BIT as raw::c_int);
-                out.push(ffi::egl::CONFORMANT as raw::c_int);
-                out.push(ffi::egl::OPENGL_ES2_BIT as raw::c_int);
-            }
-            (Api::OpenGlEs, _) => {
-                if egl_version >= &(1, 3) {
-                    log::debug!("using OpenGlEs 1.3");
-                    out.push(ffi::egl::RENDERABLE_TYPE as raw::c_int);
-                    out.push(ffi::egl::OPENGL_ES_BIT as raw::c_int);
-                    out.push(ffi::egl::CONFORMANT as raw::c_int);
-                    out.push(ffi::egl::OPENGL_ES_BIT as raw::c_int);
-                } else {
-                    log::debug!("using unknown OpenGlEs");
-                }
-            }
-            (Api::OpenGl, _) => {
-                if egl_version < &(1, 3) {
-                    log::warn!("opengl egl_version mismatch");
-                    return Err(CreationError::NoAvailablePixelFormat);
-                }
-                log::debug!("using opengl");
-                out.push(ffi::egl::RENDERABLE_TYPE as raw::c_int);
-                out.push(ffi::egl::OPENGL_BIT as raw::c_int);
-                out.push(ffi::egl::CONFORMANT as raw::c_int);
-                out.push(ffi::egl::OPENGL_BIT as raw::c_int);
-            }
-            (_, _) => unimplemented!(),
-        };
+        out.push(ffi::egl::RENDERABLE_TYPE as raw::c_int);
+        out.push(ffi::egl::DONT_CARE as raw::c_int);
+        out.push(ffi::egl::CONFORMANT as raw::c_int);
+        out.push(ffi::egl::DONT_CARE as raw::c_int);
 
         out.push(ffi::egl::CONFIG_CAVEAT as raw::c_int);
         out.push(ffi::egl::DONT_CARE as raw::c_int);
