@@ -948,6 +948,7 @@ where
     log::debug!("attempting to find matching pixel format for {pf_reqs:?}");
 
     unsafe {
+        log::debug!("attempting to get available configs");
         let mut available_configs = Vec::with_capacity(100);
         let mut amount: i32 = 0;
         let amount_ptr: *mut i32 = &mut amount;
@@ -956,6 +957,8 @@ where
         if available_configs.is_empty() {
             log::warn!("unable to find any configs via GetConfigs");
         }
+
+        log::debug!("found {amount} configs");
 
         for config in &available_configs {
             log::info!("{config:?}");
