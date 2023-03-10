@@ -361,7 +361,7 @@ impl Context {
         opengl: &'a GlAttributes<&'a Context>,
         native_display: NativeDisplay,
         surface_type: SurfaceType,
-        config_selector: F,
+        mut config_selector: F,
     ) -> Result<ContextPrototype<'a>, CreationError>
     where
         F: FnMut(
@@ -394,7 +394,7 @@ impl Context {
         let (version, api) = unsafe { bind_and_get_api(opengl, egl_version)? };
 
         let (config_id, pixel_format) = unsafe {
-            choose_fbconfig(
+            match choose_fbconfig(
                 display,
                 &egl_version,
                 api,
@@ -402,8 +402,25 @@ impl Context {
                 pf_reqs,
                 surface_type,
                 opengl,
-                config_selector,
-            )?
+                &mut config_selector,
+            ) {
+                Err(error) => {
+                    log::warn!(
+                        "unable to pick fbconfig from provided options, defaulting to dont care (error: {error:?})"
+                    );
+
+                    yeet_fbconfig(
+                        display,
+                        &egl_version,
+                        api,
+                        version,
+                        surface_type,
+                        opengl,
+                        config_selector,
+                    )?
+                }
+                Ok((id, fmt)) => (id, fmt),
+            }
         };
 
         Ok(ContextPrototype {
@@ -928,6 +945,227 @@ impl<'a> ContextPrototype<'a> {
     }
 }
 
+unsafe fn yeet_fbconfig<F>(
+    display: ffi::egl::types::EGLDisplay,
+    egl_version: &(ffi::egl::types::EGLint, ffi::egl::types::EGLint),
+    api: Api,
+    version: Option<(u8, u8)>,
+    surface_type: SurfaceType,
+    opengl: &GlAttributes<&Context>,
+    mut config_selector: F,
+) -> Result<(ffi::egl::types::EGLConfig, PixelFormat), CreationError>
+where
+    F: FnMut(
+        Vec<ffi::egl::types::EGLConfig>,
+        ffi::egl::types::EGLDisplay,
+    ) -> Result<ffi::egl::types::EGLConfig, ()>,
+{
+    let egl = EGL.as_ref().unwrap();
+    log::debug!("attempting to use dont-care config");
+
+    let descriptor = {
+        let mut out: Vec<raw::c_int> = Vec::with_capacity(37);
+
+        out.push(ffi::egl::COLOR_BUFFER_TYPE as raw::c_int);
+        out.push(ffi::egl::DONT_CARE as raw::c_int);
+
+        out.push(ffi::egl::SURFACE_TYPE as raw::c_int);
+        let surface_type = match surface_type {
+            SurfaceType::Window => ffi::egl::WINDOW_BIT,
+            SurfaceType::PBuffer => ffi::egl::PBUFFER_BIT,
+            SurfaceType::Surfaceless => 0,
+        };
+        out.push(surface_type as raw::c_int);
+
+        match (api, version) {
+            (Api::OpenGlEs, Some((3, _))) => {
+                if egl_version < &(1, 3) {
+                    log::warn!("opengles 3 egl_version mismatch");
+                    return Err(CreationError::NoAvailablePixelFormat);
+                }
+                log::debug!("using OpenGlEs 3.x");
+                out.push(ffi::egl::RENDERABLE_TYPE as raw::c_int);
+                out.push(ffi::egl::OPENGL_ES3_BIT as raw::c_int);
+                out.push(ffi::egl::CONFORMANT as raw::c_int);
+                out.push(ffi::egl::OPENGL_ES3_BIT as raw::c_int);
+            }
+            (Api::OpenGlEs, Some((2, _))) => {
+                if egl_version < &(1, 3) {
+                    log::warn!("opengles 2 egl_version mismatch");
+                    return Err(CreationError::NoAvailablePixelFormat);
+                }
+                log::debug!("using OpenGlEs 2.x");
+                out.push(ffi::egl::RENDERABLE_TYPE as raw::c_int);
+                out.push(ffi::egl::OPENGL_ES2_BIT as raw::c_int);
+                out.push(ffi::egl::CONFORMANT as raw::c_int);
+                out.push(ffi::egl::OPENGL_ES2_BIT as raw::c_int);
+            }
+            (Api::OpenGlEs, _) => {
+                if egl_version >= &(1, 3) {
+                    log::debug!("using OpenGlEs 1.3");
+                    out.push(ffi::egl::RENDERABLE_TYPE as raw::c_int);
+                    out.push(ffi::egl::OPENGL_ES_BIT as raw::c_int);
+                    out.push(ffi::egl::CONFORMANT as raw::c_int);
+                    out.push(ffi::egl::OPENGL_ES_BIT as raw::c_int);
+                } else {
+                    log::debug!("using unknown OpenGlEs");
+                }
+            }
+            (Api::OpenGl, _) => {
+                if egl_version < &(1, 3) {
+                    log::warn!("opengl egl_version mismatch");
+                    return Err(CreationError::NoAvailablePixelFormat);
+                }
+                log::debug!("using opengl");
+                out.push(ffi::egl::RENDERABLE_TYPE as raw::c_int);
+                out.push(ffi::egl::OPENGL_BIT as raw::c_int);
+                out.push(ffi::egl::CONFORMANT as raw::c_int);
+                out.push(ffi::egl::OPENGL_BIT as raw::c_int);
+            }
+            (_, _) => unimplemented!(),
+        };
+
+        out.push(ffi::egl::CONFIG_CAVEAT as raw::c_int);
+        out.push(ffi::egl::DONT_CARE as raw::c_int);
+
+        out.push(ffi::egl::RED_SIZE as raw::c_int);
+        out.push(ffi::egl::DONT_CARE as raw::c_int);
+
+        out.push(ffi::egl::GREEN_SIZE as raw::c_int);
+        out.push(ffi::egl::DONT_CARE as raw::c_int);
+
+        out.push(ffi::egl::BLUE_SIZE as raw::c_int);
+        out.push(ffi::egl::DONT_CARE as raw::c_int);
+
+        out.push(ffi::egl::ALPHA_SIZE as raw::c_int);
+        out.push(ffi::egl::DONT_CARE as raw::c_int);
+
+        out.push(ffi::egl::DEPTH_SIZE as raw::c_int);
+        out.push(ffi::egl::DONT_CARE as raw::c_int);
+
+        out.push(ffi::egl::STENCIL_SIZE as raw::c_int);
+        out.push(ffi::egl::DONT_CARE as raw::c_int);
+
+        out.push(ffi::egl::SAMPLES as raw::c_int);
+        out.push(ffi::egl::DONT_CARE as raw::c_int);
+
+        out.push(ffi::egl::NATIVE_VISUAL_ID as raw::c_int);
+        out.push(ffi::egl::DONT_CARE as raw::c_int);
+
+        out.push(ffi::egl::NONE as raw::c_int);
+        out
+    };
+
+    // calling `eglChooseConfig`
+    let mut num_configs = std::mem::zeroed();
+    if egl.ChooseConfig(display, descriptor.as_ptr(), std::ptr::null_mut(), 0, &mut num_configs)
+        == 0
+    {
+        return Err(CreationError::OsError("eglChooseConfig failed".to_string()));
+    }
+
+    if num_configs == 0 {
+        log::warn!("no matching config found");
+
+        return Err(CreationError::NoAvailablePixelFormat);
+    }
+
+    let mut config_ids = Vec::with_capacity(num_configs as usize);
+    config_ids.resize_with(num_configs as usize, || std::mem::zeroed());
+    if egl.ChooseConfig(
+        display,
+        descriptor.as_ptr(),
+        config_ids.as_mut_ptr(),
+        num_configs,
+        &mut num_configs,
+    ) == 0
+    {
+        return Err(CreationError::OsError("eglChooseConfig failed".to_string()));
+    }
+
+    // We're interested in those configs which allow our desired VSync.
+    let desired_swap_interval = if opengl.vsync { 1 } else { 0 };
+
+    let config_ids = config_ids
+        .into_iter()
+        .filter(|&config| {
+            let mut min_swap_interval = 0;
+            let _res = egl.GetConfigAttrib(
+                display,
+                config,
+                ffi::egl::MIN_SWAP_INTERVAL as ffi::egl::types::EGLint,
+                &mut min_swap_interval,
+            );
+
+            if desired_swap_interval < min_swap_interval {
+                return false;
+            }
+
+            let mut max_swap_interval = 0;
+            let _res = egl.GetConfigAttrib(
+                display,
+                config,
+                ffi::egl::MAX_SWAP_INTERVAL as ffi::egl::types::EGLint,
+                &mut max_swap_interval,
+            );
+
+            if desired_swap_interval > max_swap_interval {
+                return false;
+            }
+
+            true
+        })
+        .collect::<Vec<_>>();
+
+    if config_ids.is_empty() {
+        log::warn!("no config ids available");
+
+        return Err(CreationError::NoAvailablePixelFormat);
+    }
+
+    let config_id = config_selector(config_ids, display).map_err(|_| {
+        log::warn!("unable to get config selector from list");
+
+        CreationError::NoAvailablePixelFormat
+    })?;
+
+    // analyzing each config
+    macro_rules! attrib {
+        ($egl:expr, $display:expr, $config:expr, $attr:expr) => {{
+            let mut value = std::mem::zeroed();
+            let res = $egl.GetConfigAttrib(
+                $display,
+                $config,
+                $attr as ffi::egl::types::EGLint,
+                &mut value,
+            );
+            if res == 0 {
+                return Err(CreationError::OsError("eglGetConfigAttrib failed".to_string()));
+            }
+            value
+        }};
+    }
+
+    let desc = PixelFormat {
+        hardware_accelerated: attrib!(egl, display, config_id, ffi::egl::CONFIG_CAVEAT)
+            != ffi::egl::SLOW_CONFIG as i32,
+        color_bits: attrib!(egl, display, config_id, ffi::egl::RED_SIZE) as u8
+            + attrib!(egl, display, config_id, ffi::egl::BLUE_SIZE) as u8
+            + attrib!(egl, display, config_id, ffi::egl::GREEN_SIZE) as u8,
+        alpha_bits: attrib!(egl, display, config_id, ffi::egl::ALPHA_SIZE) as u8,
+        depth_bits: attrib!(egl, display, config_id, ffi::egl::DEPTH_SIZE) as u8,
+        stencil_bits: attrib!(egl, display, config_id, ffi::egl::STENCIL_SIZE) as u8,
+        stereoscopy: false,
+        double_buffer: true,
+        multisampling: match attrib!(egl, display, config_id, ffi::egl::SAMPLES) {
+            0 | 1 => None,
+            a => Some(a as u16),
+        },
+        srgb: false,
+    };
+
+    Ok((config_id, desc))
+}
 unsafe fn choose_fbconfig<F>(
     display: ffi::egl::types::EGLDisplay,
     egl_version: &(ffi::egl::types::EGLint, ffi::egl::types::EGLint),
@@ -996,6 +1234,8 @@ where
         let mut out: Vec<raw::c_int> = Vec::with_capacity(37);
 
         if egl_version >= &(1, 2) {
+            log::debug!("setting color buffer type to rgb buffer");
+
             out.push(ffi::egl::COLOR_BUFFER_TYPE as raw::c_int);
             out.push(ffi::egl::RGB_BUFFER as raw::c_int);
         }
@@ -1014,6 +1254,7 @@ where
                     log::warn!("opengles 3 egl_version mismatch");
                     return Err(CreationError::NoAvailablePixelFormat);
                 }
+                log::debug!("using OpenGlEs 3.x");
                 out.push(ffi::egl::RENDERABLE_TYPE as raw::c_int);
                 out.push(ffi::egl::OPENGL_ES3_BIT as raw::c_int);
                 out.push(ffi::egl::CONFORMANT as raw::c_int);
@@ -1024,6 +1265,7 @@ where
                     log::warn!("opengles 2 egl_version mismatch");
                     return Err(CreationError::NoAvailablePixelFormat);
                 }
+                log::debug!("using OpenGlEs 2.x");
                 out.push(ffi::egl::RENDERABLE_TYPE as raw::c_int);
                 out.push(ffi::egl::OPENGL_ES2_BIT as raw::c_int);
                 out.push(ffi::egl::CONFORMANT as raw::c_int);
@@ -1031,10 +1273,13 @@ where
             }
             (Api::OpenGlEs, _) => {
                 if egl_version >= &(1, 3) {
+                    log::debug!("using OpenGlEs 1.3");
                     out.push(ffi::egl::RENDERABLE_TYPE as raw::c_int);
                     out.push(ffi::egl::OPENGL_ES_BIT as raw::c_int);
                     out.push(ffi::egl::CONFORMANT as raw::c_int);
                     out.push(ffi::egl::OPENGL_ES_BIT as raw::c_int);
+                } else {
+                    log::debug!("using unknown OpenGlEs");
                 }
             }
             (Api::OpenGl, _) => {
@@ -1042,6 +1287,7 @@ where
                     log::warn!("opengl egl_version mismatch");
                     return Err(CreationError::NoAvailablePixelFormat);
                 }
+                log::debug!("using opengl");
                 out.push(ffi::egl::RENDERABLE_TYPE as raw::c_int);
                 out.push(ffi::egl::OPENGL_BIT as raw::c_int);
                 out.push(ffi::egl::CONFORMANT as raw::c_int);
@@ -1051,6 +1297,7 @@ where
         };
 
         if let Some(hardware_accelerated) = pf_reqs.hardware_accelerated {
+            log::debug!("adding hardware accelerated attr check");
             out.push(ffi::egl::CONFIG_CAVEAT as raw::c_int);
             out.push(if hardware_accelerated {
                 ffi::egl::NONE as raw::c_int
@@ -1090,6 +1337,7 @@ where
         }
 
         if let Some(multisampling) = pf_reqs.multisampling {
+            log::debug!("adding multisample  attr check");
             out.push(ffi::egl::SAMPLES as raw::c_int);
             out.push(multisampling as raw::c_int);
         }
@@ -1101,6 +1349,7 @@ where
         }
 
         if let Some(xid) = pf_reqs.x11_visual_xid {
+            log::debug!("adding x11 visual xid");
             out.push(ffi::egl::NATIVE_VISUAL_ID as raw::c_int);
             out.push(xid as raw::c_int);
         }
