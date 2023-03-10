@@ -104,6 +104,7 @@ impl Context {
     ) -> Result<(Window, Self), CreationError> {
         #[cfg(feature = "wayland")]
         if el.is_wayland() {
+            log::debug!("building wayland windowed context");
             Context::is_compatible(&gl_attr.sharing, ContextType::Wayland)?;
 
             let gl_attr = gl_attr.clone().map_sharing(|ctx| match *ctx {
@@ -115,6 +116,7 @@ impl Context {
         }
         #[cfg(feature = "x11")]
         if el.is_x11() {
+            log::debug!("building x11 windowed context");
             Context::is_compatible(&gl_attr.sharing, ContextType::X11)?;
             let gl_attr = gl_attr.clone().map_sharing(|ctx| match *ctx {
                 Context::X11(ref ctx) => ctx,

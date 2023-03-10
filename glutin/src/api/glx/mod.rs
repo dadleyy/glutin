@@ -45,6 +45,7 @@ impl SymTrait for ffi::glx::Glx {
 
 impl Glx {
     pub fn new() -> Result<Self, ()> {
+        log::debug!("loading glx libraries");
         let paths = vec!["libGL.so.1", "libGL.so"];
 
         SymWrapper::new(paths).map(Glx)

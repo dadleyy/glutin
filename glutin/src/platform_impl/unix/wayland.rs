@@ -88,6 +88,7 @@ impl Context {
         pf_reqs: &PixelFormatRequirements,
         gl_attr: &GlAttributes<&Context>,
     ) -> Result<(Window, Self), CreationError> {
+        log::debug!("building wayland context");
         let win = wb.build(el)?;
 
         let size = win.inner_size();

@@ -99,6 +99,7 @@ pub fn select_config<T, F>(
 where
     F: FnMut(&T) -> Option<ffi::XVisualInfo>,
 {
+    log::debug!("start config selection");
     use crate::platform_impl::x11_utils::Lacks;
     let mut chosen_config_id = None;
     let mut lacks_what = None;
@@ -153,6 +154,7 @@ where
         None => unreachable!(),
     }
 
+    log::debug!("end config selection");
     chosen_config_id.ok_or(())
 }
 
@@ -290,6 +292,7 @@ impl Context {
         force_prefer_unless_only: bool,
         transparent: Option<bool>,
     ) -> Result<Prototype<'a>, CreationError> {
+        log::debug!("attempting to select config");
         let select_config = |cs, display| {
             select_config(xconn, transparent, pf_reqs, cs, |config_id| {
                 let xid = egl::get_native_visual_id(display, *config_id) as ffi::VisualID;
@@ -300,10 +303,12 @@ impl Context {
             })
             .map(|(c, _)| c)
         };
+        log::debug!("confix selected, doing version-specific things ({:?})", gl_attr.version);
         Ok(match gl_attr.version {
             GlRequest::Latest
             | GlRequest::Specific(Api::OpenGl, _)
             | GlRequest::GlThenGles { .. } => {
+                log::debug!("glrequest - gl then gles");
                 // GLX should be preferred over EGL, otherwise crashes may occur
                 // on X11 – issue #314
                 //
@@ -341,15 +346,18 @@ impl Context {
                     )?))
                 };
 
+                log::debug!("inspecting attr sharing - {:?}", gl_attr.sharing);
                 // if there is already a context, just use that.
                 // this prevents the "context already exists but is wrong type" panics above.
                 if let Some(c) = gl_attr.sharing {
                     match c.context {
                         X11Context::Glx(_) => {
+                            log::debug!("attempting to get glx as ref");
                             GLX.as_ref().expect("found GLX context but GLX not loaded");
                             return glx(builder_glx_u);
                         }
                         X11Context::Egl(_) => {
+                            log::debug!("attempting to get egl as ref");
                             EGL.as_ref().expect("found EGL context but EGL not loaded");
                             return egl(builder_egl_u);
                         }
@@ -404,6 +412,7 @@ impl Context {
                 }
             }
             GlRequest::Specific(Api::OpenGlEs, _) => {
+                log::debug!("glrequest - specific");
                 if EGL.is_some() {
                     let builder = gl_attr.clone();
                     *builder_egl_u = Some(builder.map_sharing(|c| match c.context {
@@ -436,6 +445,7 @@ impl Context {
         pf_reqs: &PixelFormatRequirements,
         gl_attr: &GlAttributes<&Context>,
     ) -> Result<(Window, Self), CreationError> {
+        log::debug!("building x11 context");
         Self::try_then_fallback(|fallback| {
             Self::new_impl(wb.clone(), el, pf_reqs, gl_attr, fallback)
         })
@@ -448,6 +458,7 @@ impl Context {
         gl_attr: &GlAttributes<&Context>,
         fallback: bool,
     ) -> Result<(Window, Self), CreationError> {
+        log::debug!("creating xlib connection");
         let xconn = match el.xlib_xconnection() {
             Some(xconn) => xconn,
             None => {
@@ -455,12 +466,14 @@ impl Context {
             }
         };
 
+        log::debug!("getting screen id");
         // Get the screen_id for the window being built.
         let screen_id = unsafe { (xconn.xlib.XDefaultScreen)(xconn.display) };
 
         let mut builder_glx_u = None;
         let mut builder_egl_u = None;
 
+        log::debug!("starting first stage builder");
         // start the context building process
         let context = Self::new_first_stage(
             &xconn,
@@ -475,6 +488,7 @@ impl Context {
             Some(wb.transparent()),
         )?;
 
+        log::debug!("getting visual infos");
         // getting the `visual_infos` (a struct that contains information about
         // the visual to use)
         let visual_infos = match context {
@@ -484,16 +498,21 @@ impl Context {
             }
         };
 
+        log::debug!("setting visual infos");
         let win =
             wb.with_x11_visual(&visual_infos as *const _).with_x11_screen(screen_id).build(el)?;
 
+        log::debug!("getting xlib window");
         let xwin = win.xlib_window().unwrap();
+
+        log::debug!("finishing context creation");
         // finish creating the OpenGL context
         let context = match context {
             Prototype::Glx(ctx) => X11Context::Glx(ctx.finish(xwin)?),
             Prototype::Egl(ctx) => X11Context::Egl(ctx.finish(xwin as _)?),
         };
 
+        log::debug!("returning context");
         let context = Context::Windowed(ContextInner { context });
 
         Ok((win, context))

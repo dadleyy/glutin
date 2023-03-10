@@ -53,16 +53,19 @@ static EGL_GET_PROC_ADDRESS: OnceCell<EglGetProcAddressType> = OnceCell::new();
 
 impl SymTrait for ffi::egl::Egl {
     fn load_with(lib: &libloading::Library) -> Self {
+        log::debug!("starting load");
         let f = move |s: &'static str| -> *const std::os::raw::c_void {
-            let s = std::ffi::CString::new(s.as_bytes()).unwrap();
-            let s = s.as_bytes_with_nul();
+            let c_s = std::ffi::CString::new(s.as_bytes()).unwrap();
+            let s_bytes = c_s.as_bytes_with_nul();
 
             // Check if the symbol is available in the library directly. If
             // it is, just return it.
-            if let Ok(sym) = unsafe { lib.get(s) } {
+            if let Ok(sym) = unsafe { lib.get(s_bytes) } {
+                log::debug!("'{s}' was in the library already");
                 return *sym;
             }
 
+            log::warn!("'{s}' missing, attempting to get proc address");
             let egl_get_proc_address = EGL_GET_PROC_ADDRESS.get_or_init(|| unsafe {
                 let sym: libloading::Symbol<
                     unsafe extern "C" fn(
@@ -76,10 +79,12 @@ impl SymTrait for ffi::egl::Egl {
             // eglGetProcAddress for it. Note that eglGetProcAddress was
             // only able to look up extension functions prior to EGL 1.5,
             // hence this two-part dance.
-            unsafe { (egl_get_proc_address)(s.as_ptr().cast()) }
+            unsafe { (egl_get_proc_address)(s_bytes.as_ptr().cast()) }
         };
 
-        Self::load_with(f)
+        let out = Self::load_with(f);
+        log::debug!("loaded correctly");
+        out
     }
 }
 
@@ -90,6 +95,8 @@ impl Egl {
 
         #[cfg(not(target_os = "windows"))]
         let paths = vec!["libEGL.so.1", "libEGL.so"];
+
+        log::debug!("loading egl libraries");
 
         SymWrapper::new(paths).map(Egl)
     }
@@ -144,15 +151,19 @@ pub struct Context {
 fn get_egl_version(
     display: ffi::egl::types::EGLDisplay,
 ) -> Result<(ffi::egl::types::EGLint, ffi::egl::types::EGLint), CreationError> {
+    log::debug!("attempting to get egl version");
     unsafe {
         let egl = EGL.as_ref().unwrap();
+        log::debug!("unwrapped our egl api reference, attempting to init");
         let mut major: ffi::egl::types::EGLint = std::mem::zeroed();
         let mut minor: ffi::egl::types::EGLint = std::mem::zeroed();
 
         if egl.Initialize(display, &mut major, &mut minor) == 0 {
+            log::debug!("unable to initialize");
             return Err(CreationError::OsError("eglInitialize failed".to_string()));
         }
 
+        log::debug!("got egl version");
         Ok((major, minor))
     }
 }
@@ -161,6 +172,7 @@ unsafe fn bind_and_get_api<'a>(
     opengl: &'a GlAttributes<&'a Context>,
     egl_version: (ffi::egl::types::EGLint, ffi::egl::types::EGLint),
 ) -> Result<(Option<(u8, u8)>, Api), CreationError> {
+    log::debug!("attempting to get api");
     let egl = EGL.as_ref().unwrap();
     match opengl.version {
         GlRequest::Latest => {
@@ -950,7 +962,7 @@ where
     ) -> Result<ffi::egl::types::EGLConfig, ()>,
 {
     let egl = EGL.as_ref().unwrap();
-    log::debug!("attempting to use dont-care config");
+    log::debug!("(dont-care) attempting to use dont-care config");
 
     let descriptor = {
         let mut out: Vec<raw::c_int> = Vec::with_capacity(37);
@@ -1007,13 +1019,15 @@ where
     if egl.ChooseConfig(display, descriptor.as_ptr(), std::ptr::null_mut(), 0, &mut num_configs)
         == 0
     {
+        log::warn!("(dont-care) unable to get a count of dont-care configs");
+
         return Err(CreationError::OsError("eglChooseConfig failed".to_string()));
     }
 
-    log::debug!("found {num_configs} available configs in dont-care");
+    log::debug!("(dont-care) found {num_configs} available configs in dont-care");
 
     if num_configs == 0 {
-        log::warn!("no matching config found");
+        log::warn!("(dont-care) no matching config found");
 
         return Err(CreationError::NoAvailablePixelFormat);
     }
@@ -1030,11 +1044,11 @@ where
     {
         return Err(CreationError::OsError("eglChooseConfig failed".to_string()));
     }
-    log::debug!("populated {} config ids", config_ids.len());
+    log::debug!("(dont-care) populated {} config ids", config_ids.len());
 
     // We're interested in those configs which allow our desired VSync.
     let desired_swap_interval = if opengl.vsync { 1 } else { 0 };
-    log::debug!("attempting to find swap interval - {desired_swap_interval}");
+    log::debug!("(dont-care) attempting to find swap interval - {desired_swap_interval}");
 
     let config_ids = config_ids
         .into_iter()
@@ -1048,7 +1062,7 @@ where
             );
 
             if desired_swap_interval < min_swap_interval {
-                log::warn!("mismatch min swap interval for config {config:?}: {min_swap_interval}");
+                log::warn!("(dont-care) mismatch min swap interval for config {config:?}: {min_swap_interval}");
 
                 return false;
             }
@@ -1062,7 +1076,7 @@ where
             );
 
             if desired_swap_interval > max_swap_interval {
-                log::warn!("mismatch max swap interval for config {config:?}: {max_swap_interval}");
+                log::warn!("(dont-care) mismatch max swap interval for config {config:?}: {max_swap_interval}");
 
                 return false;
             }
@@ -1072,13 +1086,13 @@ where
         .collect::<Vec<_>>();
 
     if config_ids.is_empty() {
-        log::warn!("no config ids available");
+        log::warn!("(dont-care) no config ids available");
 
         return Err(CreationError::NoAvailablePixelFormat);
     }
 
     let config_id = config_selector(config_ids, display).map_err(|_| {
-        log::warn!("unable to get config selector from list");
+        log::warn!("(dont-care) unable to get config selector from list");
 
         CreationError::NoAvailablePixelFormat
     })?;
@@ -1137,10 +1151,10 @@ where
     ) -> Result<ffi::egl::types::EGLConfig, ()>,
 {
     let egl = EGL.as_ref().unwrap();
-    log::debug!("attempting to find matching pixel format for {pf_reqs:?}");
+    log::debug!("(requested config) attempting to find matching pixel format for {pf_reqs:?}");
 
     unsafe {
-        log::debug!("attempting to get available configs");
+        log::debug!("(requested config) attempting to get available configs");
         let mut available_configs = Vec::with_capacity(100);
         let mut amount: i32 = 0;
         let amount_ptr: *mut i32 = &mut amount;
@@ -1148,10 +1162,10 @@ where
         available_configs.set_len(amount.try_into().unwrap());
 
         if available_configs.is_empty() {
-            log::warn!("unable to find any configs via GetConfigs");
+            log::warn!("(requested config) unable to find any configs via GetConfigs");
         }
 
-        log::debug!("found {amount} configs");
+        log::debug!("(requested config) found {amount} configs");
 
         for config in &available_configs {
             log::info!("{config:?}");
@@ -1188,7 +1202,7 @@ where
         let mut out: Vec<raw::c_int> = Vec::with_capacity(37);
 
         if egl_version >= &(1, 2) {
-            log::debug!("setting color buffer type to rgb buffer");
+            log::debug!("(requested config) setting color buffer type to rgb buffer");
 
             out.push(ffi::egl::COLOR_BUFFER_TYPE as raw::c_int);
             out.push(ffi::egl::RGB_BUFFER as raw::c_int);
@@ -1205,10 +1219,10 @@ where
         match (api, version) {
             (Api::OpenGlEs, Some((3, _))) => {
                 if egl_version < &(1, 3) {
-                    log::warn!("opengles 3 egl_version mismatch");
+                    log::warn!("(requested config) opengles 3 egl_version mismatch");
                     return Err(CreationError::NoAvailablePixelFormat);
                 }
-                log::debug!("using OpenGlEs 3.x");
+                log::debug!("(requested config) using OpenGlEs 3.x");
                 out.push(ffi::egl::RENDERABLE_TYPE as raw::c_int);
                 out.push(ffi::egl::OPENGL_ES3_BIT as raw::c_int);
                 out.push(ffi::egl::CONFORMANT as raw::c_int);
@@ -1216,10 +1230,10 @@ where
             }
             (Api::OpenGlEs, Some((2, _))) => {
                 if egl_version < &(1, 3) {
-                    log::warn!("opengles 2 egl_version mismatch");
+                    log::warn!("(requested config) opengles 2 egl_version mismatch");
                     return Err(CreationError::NoAvailablePixelFormat);
                 }
-                log::debug!("using OpenGlEs 2.x");
+                log::debug!("(requested config) using OpenGlEs 2.x");
                 out.push(ffi::egl::RENDERABLE_TYPE as raw::c_int);
                 out.push(ffi::egl::OPENGL_ES2_BIT as raw::c_int);
                 out.push(ffi::egl::CONFORMANT as raw::c_int);
@@ -1227,7 +1241,7 @@ where
             }
             (Api::OpenGlEs, _) => {
                 if egl_version >= &(1, 3) {
-                    log::debug!("using OpenGlEs 1.3");
+                    log::debug!("(requested config) using OpenGlEs 1.3");
                     out.push(ffi::egl::RENDERABLE_TYPE as raw::c_int);
                     out.push(ffi::egl::OPENGL_ES_BIT as raw::c_int);
                     out.push(ffi::egl::CONFORMANT as raw::c_int);
@@ -1251,7 +1265,7 @@ where
         };
 
         if let Some(hardware_accelerated) = pf_reqs.hardware_accelerated {
-            log::debug!("adding hardware accelerated attr check");
+            log::debug!("(requested config) adding hardware accelerated attr check");
             out.push(ffi::egl::CONFIG_CAVEAT as raw::c_int);
             out.push(if hardware_accelerated {
                 ffi::egl::NONE as raw::c_int
@@ -1325,11 +1339,13 @@ where
     if egl.ChooseConfig(display, descriptor.as_ptr(), std::ptr::null_mut(), 0, &mut num_configs)
         == 0
     {
+        log::warn!("(requested config) unable to lookup config count");
+
         return Err(CreationError::OsError("eglChooseConfig failed".to_string()));
     }
 
     if num_configs == 0 {
-        log::warn!("no matching config found");
+        log::warn!("(requested config) no matching config found");
 
         return Err(CreationError::NoAvailablePixelFormat);
     }
@@ -1344,11 +1360,13 @@ where
         &mut num_configs,
     ) == 0
     {
+        log::warn!("(requested config) unable to fill config ids");
         return Err(CreationError::OsError("eglChooseConfig failed".to_string()));
     }
 
     // We're interested in those configs which allow our desired VSync.
     let desired_swap_interval = if opengl.vsync { 1 } else { 0 };
+    log::warn!("(requested config) desired swap - {desired_swap_interval}");
 
     let config_ids = config_ids
         .into_iter()
@@ -1362,6 +1380,7 @@ where
             );
 
             if desired_swap_interval < min_swap_interval {
+                log::warn!("(requested config) desired swap - min mismatch {min_swap_interval} vs {desired_swap_interval}");
                 return false;
             }
 
@@ -1374,6 +1393,7 @@ where
             );
 
             if desired_swap_interval > max_swap_interval {
+                log::warn!("(requested config) desired swap - max mismatch {max_swap_interval} vs {desired_swap_interval}");
                 return false;
             }
 
@@ -1382,13 +1402,13 @@ where
         .collect::<Vec<_>>();
 
     if config_ids.is_empty() {
-        log::warn!("no config ids available");
+        log::warn!("(requested config) no config ids available");
 
         return Err(CreationError::NoAvailablePixelFormat);
     }
 
     let config_id = config_selector(config_ids, display).map_err(|_| {
-        log::warn!("unable to get config selector from list");
+        log::warn!("(requested config) unable to get config selector from list");
 
         CreationError::NoAvailablePixelFormat
     })?;
