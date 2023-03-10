@@ -963,6 +963,32 @@ where
 
         for config in &available_configs {
             log::info!("{config:?}");
+            let mut value: i32 = 0;
+            let value_ptr: *mut i32 = &mut value;
+
+            egl.GetConfigAttrib(display, *config, ffi::egl::RED_SIZE as raw::c_int, value_ptr);
+            log::debug!("red: {value}");
+
+            egl.GetConfigAttrib(display, *config, ffi::egl::BLUE_SIZE as raw::c_int, value_ptr);
+            log::debug!("red: {value}");
+
+            egl.GetConfigAttrib(display, *config, ffi::egl::GREEN_SIZE as raw::c_int, value_ptr);
+            log::debug!("green: {value}");
+
+            egl.GetConfigAttrib(display, *config, ffi::egl::ALPHA_SIZE as raw::c_int, value_ptr);
+            log::debug!("alpha: {value}");
+
+            egl.GetConfigAttrib(display, *config, ffi::egl::DEPTH_SIZE as raw::c_int, value_ptr);
+            log::debug!("depth: {value}");
+
+            egl.GetConfigAttrib(display, *config, ffi::egl::STENCIL_SIZE as raw::c_int, value_ptr);
+            log::debug!("stencil: {value}");
+
+            egl.GetConfigAttrib(display, *config, ffi::egl::SAMPLES as raw::c_int, value_ptr);
+            log::debug!("samples: {value}");
+
+            egl.GetConfigAttrib(display, *config, ffi::egl::CONFIG_CAVEAT as raw::c_int, value_ptr);
+            log::debug!("config caveat: {value}");
         }
     }
 
