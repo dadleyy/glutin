@@ -946,6 +946,17 @@ where
 {
     let egl = EGL.as_ref().unwrap();
 
+    unsafe {
+        let mut available_configs = Vec::with_capacity(100);
+        let mut amount: i32 = 0;
+        let amount_ptr: *mut i32 = &mut amount;
+        egl.GetConfigs(display, available_configs.as_mut_ptr(), 100, amount_ptr);
+
+        for config in &available_configs {
+            log::info!("{config:?}");
+        }
+    }
+
     let descriptor = {
         let mut out: Vec<raw::c_int> = Vec::with_capacity(37);
 
@@ -1070,17 +1081,6 @@ where
         out.push(ffi::egl::NONE as raw::c_int);
         out
     };
-
-    unsafe {
-        let mut available_configs = Vec::with_capacity(100);
-        let mut amount: i32 = 0;
-        let amount_ptr: *mut i32 = &mut amount;
-        egl.GetConfigs(display, available_configs.as_mut_ptr(), 100, amount_ptr);
-
-        for config in &available_configs {
-            log::info!("{config:?}");
-        }
-    }
 
     // calling `eglChooseConfig`
     let mut num_configs = std::mem::zeroed();
