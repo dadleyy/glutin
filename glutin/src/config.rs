@@ -319,14 +319,36 @@ pub struct ConfigTemplate {
 
 impl Default for ConfigTemplate {
     fn default() -> Self {
-        ConfigTemplate {
+        let alpha_bits = std::env::var("GLUTIN_ALPHA_BITS")
+            .ok()
+            .and_then(|value| {
+                log::debug!("found pixel format alpha size in env - {value}");
+                value.parse::<u8>().ok()
+            })
+            .unwrap_or(8);
+        let depth_bits = std::env::var("GLUTIN_DEPTH_BITS")
+            .ok()
+            .and_then(|value| {
+                log::debug!("found pixel format depth size in env - {value}");
+                value.parse::<u8>().ok()
+            })
+            .unwrap_or(24);
+        let stencil_bits = std::env::var("GLUTIN_STENCIL_BITS")
+            .ok()
+            .and_then(|value| {
+                log::debug!("found pixel format stencil size in env - {value}");
+                value.parse::<u8>().ok()
+            })
+            .unwrap_or(8);
+
+        let mut result = ConfigTemplate {
             color_buffer_type: ColorBufferType::Rgb { r_size: 8, g_size: 8, b_size: 8 },
 
-            alpha_size: 8,
+            alpha_size: alpha_bits,
 
-            depth_size: 24,
+            depth_size: depth_bits,
 
-            stencil_size: 8,
+            stencil_size: stencil_bits,
 
             num_samples: None,
 
@@ -351,7 +373,15 @@ impl Default for ConfigTemplate {
             hardware_accelerated: None,
 
             api: None,
+        };
+
+        if let Some(_) = std::env::var("GLUTIN_GLES2").ok() {
+            log::debug!("found GLUTIN_GLES2 in env, adding to template");
+            result.api = Some(Api::GLES2)
         }
+
+        log::debug!("default config template - {result:?}");
+        result
     }
 }
 

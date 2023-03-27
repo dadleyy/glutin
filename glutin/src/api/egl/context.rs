@@ -39,6 +39,7 @@ impl Display {
                 (egl::OPENGL_API, api.and_then(|api| api.version()))
             },
             api @ Some(ContextApi::Gles(_)) | api @ None => {
+                log::debug!("matching context attributes {context_attributes:?} {api:?}");
                 let version = match api.and_then(|api| api.version()) {
                     Some(version) => version,
                     None if config_api.contains(Api::GLES3) => Version::new(3, 0),

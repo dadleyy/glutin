@@ -174,9 +174,11 @@ impl Display {
         attrs.push(egl::NONE as EGLAttrib);
 
         let config = config.clone();
+        log::debug!("current config - {config:?}");
 
         let surface = match self.inner.raw {
             EglDisplay::Khr(display) => unsafe {
+                log::debug!("creating platform window surface");
                 self.inner.egl.CreatePlatformWindowSurface(
                     display,
                     *config.inner.raw,
@@ -185,6 +187,7 @@ impl Display {
                 )
             },
             EglDisplay::Ext(display) => unsafe {
+                log::debug!("creating EXT platform base");
                 let attrs: Vec<EGLint> = attrs.into_iter().map(|attr| attr as EGLint).collect();
                 self.inner.egl.CreatePlatformWindowSurfaceEXT(
                     display,
@@ -194,6 +197,7 @@ impl Display {
                 )
             },
             EglDisplay::Legacy(display) => unsafe {
+                log::debug!("creating window surface");
                 let attrs: Vec<EGLint> = attrs.into_iter().map(|attr| attr as EGLint).collect();
                 // This call accepts raw value, instead of pointer.
                 self.inner.egl.CreateWindowSurface(
@@ -205,7 +209,10 @@ impl Display {
             },
         };
 
-        let surface = Self::check_surface_error(surface)?;
+        log::debug!("egl checking for surface error {surface:?}");
+        let surface_result = Self::check_surface_error(surface);
+        log::debug!("egl surface result - {surface_result:?}");
+        let surface = surface_result?;
 
         Ok(Surface {
             display: self.clone(),

@@ -313,10 +313,12 @@ impl GlDisplay for Display {
         match (self, config) {
             #[cfg(egl_backend)]
             (Self::Egl(display), Config::Egl(config)) => unsafe {
+                log::debug!("creating egl display w/ egl config {config:?}");
                 Ok(Surface::Egl(display.create_window_surface(config, surface_attributes)?))
             },
             #[cfg(glx_backend)]
             (Self::Glx(display), Config::Glx(config)) => unsafe {
+                log::debug!("creating glx display w/ egl config {config:?}");
                 Ok(Surface::Glx(display.create_window_surface(config, surface_attributes)?))
             },
             #[cfg(wgl_backend)]

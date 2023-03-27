@@ -29,6 +29,7 @@ impl Display {
         template: ConfigTemplate,
     ) -> Result<Box<dyn Iterator<Item = Config> + '_>> {
         let mut config_attributes = Vec::<EGLint>::new();
+        log::debug!("attempting to find config from template {template:?}");
 
         // Add color buffer type.
         match template.color_buffer_type {
@@ -126,6 +127,7 @@ impl Display {
         }
 
         if let Some(requested_api) = template.api {
+            log::debug!("template has requested api - {requested_api:?}");
             let mut api = 0;
             if requested_api.contains(Api::GLES1) {
                 api |= egl::OPENGL_ES_BIT;
@@ -172,11 +174,13 @@ impl Display {
             );
 
             if result == egl::FALSE {
+                log::warn!("egl returned false on ChooseConfig attempt");
                 return Err(ErrorKind::BadConfig.into());
             }
 
             found_configs.set_len(configs_number as usize);
         }
+        log::info!("egl has {} configs", found_configs.len());
 
         let configs = found_configs
             .into_iter()
