@@ -158,9 +158,11 @@ fn create_display<T>(
     #[cfg(all(egl_backend, glx_backend))]
     let _preference = match _api_preference {
         ApiPreference::PreferEgl => {
+            log::debug!("using EGL -> GLX api preference order");
             DisplayApiPreference::EglThenGlx(Box::new(register_xlib_error_hook))
         },
         ApiPreference::FallbackEgl => {
+            log::debug!("using GLX -> EGL api preference order");
             DisplayApiPreference::GlxThenEgl(Box::new(register_xlib_error_hook))
         },
     };
